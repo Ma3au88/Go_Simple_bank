@@ -20,6 +20,7 @@ func TestStore_TransferTx(t *testing.T) {
 	errs := make(chan error)
 	results := make(chan TransferTxResult)
 
+	// запускаем n одновременных транзакций перевода
 	for i := 0; i < n; i++ {
 		go func() {
 			result, err := store.TransferTx(context.Background(), TransferTxParams{
@@ -33,6 +34,8 @@ func TestStore_TransferTx(t *testing.T) {
 		}()
 	}
 
+	// проверяем результаты
+	existed := make(map[int]struct{}, 5)
 	for i := 0; i < n; i++ {
 		err := <-errs
 		require.NoError(t, err)
@@ -40,6 +43,7 @@ func TestStore_TransferTx(t *testing.T) {
 		result := <-results
 		require.NotEmpty(t, result)
 
+		// проверяем перевод
 		transfer := result.Transfer
 		require.NotEmpty(t, transfer)
 		require.Equal(t, account1.ID, transfer.FromAccountID)
@@ -51,6 +55,7 @@ func TestStore_TransferTx(t *testing.T) {
 		_, err = store.GetTransfer(context.Background(), transfer.ID)
 		require.NoError(t, err)
 
+		// проверяем записи в таблице entries
 		fromEntry := result.FromEntry
 		require.NotEmpty(t, fromEntry)
 		require.Equal(t, account1.ID, fromEntry.AccountID)
@@ -71,6 +76,85 @@ func TestStore_TransferTx(t *testing.T) {
 		_, err = store.GetEntry(context.Background(), toEntry.ID)
 		require.NoError(t, err)
 
-		// TODO: check accounts balance
+		// проверяем счета
+		fromAccount := result.FromAccount
+		require.NotEmpty(t, fromAccount)
+		require.Equal(t, account1.ID, fromAccount.ID)
+
+		toAccount := result.ToAccount
+		require.NotEmpty(t, toAccount)
+		require.Equal(t, account2.ID, toAccount.ID)
+
+		// проверяем баланс счетов
+		diff1 := account1.Balance - fromAccount.Balance
+		diff2 := toAccount.Balance - account2.Balance
+		require.Equal(t, diff1, diff2)
+		require.True(t, diff1 > 0)
+		require.True(t, diff1%amount == 0)
+
+		k := int(diff1 / amount)
+		require.True(t, k >= 1 && k <= n)
+
+		require.NotContains(t, existed, k)
+		existed[k] = struct{}{}
 	}
+
+	// проверяем получившиеся обновленные балансы
+	updatedAccount1, err := store.GetAccount(context.Background(), account1.ID)
+	require.NoError(t, err)
+
+	updatedAccount2, err := store.GetAccount(context.Background(), account2.ID)
+	require.NoError(t, err)
+
+	require.Equal(t, account1.Balance-int64(n)*amount, updatedAccount1.Balance)
+	require.Equal(t, account2.Balance+int64(n)*amount, updatedAccount2.Balance)
+}
+
+func TestStore_TransferTxDeadLock(t *testing.T) {
+	store := NewStore(testDB)
+
+	account1 := createRandomAccount(t)
+	account2 := createRandomAccount(t)
+
+	n := 10
+	amount := util.RandomMoney()
+
+	errs := make(chan error)
+
+	// запускаем n одновременных транзакций перевода
+	for i := 0; i < n; i++ {
+		fromAccountID := account1.ID
+		toAccountID := account2.ID
+
+		if i%2 == 1 {
+			fromAccountID = account2.ID
+			toAccountID = account1.ID
+		}
+
+		go func() {
+			_, err := store.TransferTx(context.Background(), TransferTxParams{
+				FromAccountID: fromAccountID,
+				ToAccountID:   toAccountID,
+				Amount:        amount,
+			})
+
+			errs <- err
+		}()
+	}
+
+	// проверяем результаты
+	for i := 0; i < n; i++ {
+		err := <-errs
+		require.NoError(t, err)
+	}
+
+	// проверяем получившиеся обновленные балансы
+	updatedAccount1, err := store.GetAccount(context.Background(), account1.ID)
+	require.NoError(t, err)
+
+	updatedAccount2, err := store.GetAccount(context.Background(), account2.ID)
+	require.NoError(t, err)
+
+	require.Equal(t, account1.Balance, updatedAccount1.Balance)
+	require.Equal(t, account2.Balance, updatedAccount2.Balance)
 }
