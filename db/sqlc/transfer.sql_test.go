@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestQueries_CreateTransfer(t *testing.T) {
+func TestCreateTransfer(t *testing.T) {
 	account1 := createRandomAccount(t)
 	account2 := createRandomAccount(t)
 	createRandomTransfer(t, account1, account2)
 }
 
-func TestQueries_GetTransfer(t *testing.T) {
+func TestGetTransfer(t *testing.T) {
 	account1 := createRandomAccount(t)
 	account2 := createRandomAccount(t)
 	transfer1 := createRandomTransfer(t, account1, account2)
@@ -32,7 +32,7 @@ func TestQueries_GetTransfer(t *testing.T) {
 	require.WithinDuration(t, transfer1.CreatedAt, transfer2.CreatedAt, time.Second)
 }
 
-func TestQueries_ListTransfers(t *testing.T) {
+func TestListTransfers(t *testing.T) {
 	account1 := createRandomAccount(t)
 	account2 := createRandomAccount(t)
 	for i := 0; i < 10; i++ {
