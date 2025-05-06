@@ -12,10 +12,10 @@ import (
 )
 
 type Server struct {
-	store  db.Store
-	router *gin.Engine
-	token  token.Maker
-	config util.Config
+	store      db.Store
+	router     *gin.Engine
+	tokenMaker token.Maker
+	config     util.Config
 }
 
 func NewServer(config util.Config, store db.Store) (*Server, error) {
@@ -25,9 +25,9 @@ func NewServer(config util.Config, store db.Store) (*Server, error) {
 	}
 
 	server := &Server{
-		config: config,
-		store:  store,
-		token:  tokenMaker,
+		config:     config,
+		store:      store,
+		tokenMaker: tokenMaker,
 	}
 
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
@@ -40,16 +40,18 @@ func NewServer(config util.Config, store db.Store) (*Server, error) {
 
 func (s *Server) setupRouter() {
 	router := gin.Default()
+
 	router.POST("/users", s.createUser)
 	router.POST("/users/login", s.loginUser)
 
-	router.POST("/accounts", s.createAccount)
-	router.GET("/accounts/:id", s.getAccount)
-	router.GET("/accounts", s.listAccounts)
-	router.PUT("/accounts/:id", s.updateAccount)
-	router.DELETE("/accounts/:id", s.deleteAccount)
+	authRoutes := router.Group("/").Use(authMiddleware(s.tokenMaker))
+	authRoutes.POST("/accounts", s.createAccount)
+	authRoutes.GET("/accounts/:id", s.getAccount)
+	authRoutes.GET("/accounts", s.listAccounts)
+	authRoutes.PUT("/accounts/:id", s.updateAccount)
+	authRoutes.DELETE("/accounts/:id", s.deleteAccount)
 
-	router.POST("/transfers", s.createTransfer)
+	authRoutes.POST("/transfers", s.createTransfer)
 
 	s.router = router
 }
